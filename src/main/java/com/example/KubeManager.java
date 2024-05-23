@@ -148,7 +148,7 @@ public void createService(String serviceName, String deploymentName, String name
     // Print success message
     System.out.println(serviceName+"Service creation success");
 }
-public void addNewHostToIngress(String ingressName, String namespace, String newHost, String wsServiceName, int wsServicePort, String httpServiceName, int httpServicePort) {
+public void addNewHostToIngress(String ingressName, String namespace, String newHost, String wsServiceName, int wsServicePort, String httpServiceName, int httpServicePort,String tlsSecretName) {
     try {
         // Use NetworkingV1Api for Ingress resources
         V1Ingress ingress = networkApi.readNamespacedIngress(ingressName, namespace, null);
@@ -204,6 +204,17 @@ public void addNewHostToIngress(String ingressName, String namespace, String new
         }
         ingress.getSpec().getRules().add(newIngressRule);
 
+        // Create a new TLS configuration for the new host
+        V1IngressTLS newTls = new V1IngressTLS();
+        newTls.setHosts(new ArrayList<String>() {{ add(newHost); }});
+        newTls.setSecretName(tlsSecretName);
+
+        // Add the new TLS configuration to the existing list of tls configurations
+        if (ingress.getSpec().getTls() == null) {
+            ingress.getSpec().setTls(new ArrayList<V1IngressTLS>());
+        }
+        ingress.getSpec().getTls().add(newTls);
+
         // Update the Ingress resource
         networkApi.replaceNamespacedIngress(ingressName, namespace, ingress, null, null, null, null);
 
@@ -252,7 +263,7 @@ public void addNewHostToIngress(String ingressName, String namespace, String new
 			kmr.createService(ui_service,Deployment_name,"ingress-nginx",ui_port);
 			kmr.createService(ws_service, Deployment_name,"ingress-nginx", ws_port);
 			kmr.createService(tcp_service, Deployment_name,"ingress-nginx", tcp_port);
-			kmr.addNewHostToIngress("broker-ingress", "ingress-nginx", company+".crystalmq.com", ws_service, ws_port, ui_service, ui_port);
+			kmr.addNewHostToIngress("broker-ingress", "ingress-nginx", company+".mqttserver.com", ws_service, ws_port, ui_service, ui_port,"ssl");
 		}
 		catch(ApiException e) { 
 			System.out.println(e.getResponseBody());
