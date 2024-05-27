@@ -16,8 +16,6 @@ import io.kubernetes.client.openapi.models.*;
 
 
 
-
-
 public class KubeManager {
 
 	static AppsV1Api appsApi = null;
@@ -101,11 +99,14 @@ public void createService(String serviceName, String deploymentName, String name
 	String servicetype="";
 	int TargetPort=0;
 	int NodePort=30008;
-	if(serviceName.contains("tcp-service")) {
+	if(serviceName.contains("tcp-service") || serviceName.contains("ws-mqtt-service")) {
 	KubePortFinder kpf=new KubePortFinder();
 	servicetype="NodePort";
 	NodePort=kpf.findFreeNodePort(coreApi);
+    if(serviceName.contains("tcp-service"))
 	TargetPort=1883;
+    else if(serviceName.contains("ws-mqtt-service"))
+    TargetPort=10433;
 	}
 	else if(serviceName.contains("ui-service")) {
 	servicetype="ClusterIP";
@@ -247,23 +248,32 @@ public void addNewHostToIngress(String ingressName, String namespace, String new
 	{
 		try { 
 			KubeManager kmr = new KubeManager();
-			KubePortFinder kpf=new KubePortFinder();
+			//KubePortFinder kpf=new KubePortFinder();
 			BufferedReader br=new BufferedReader(new InputStreamReader(System.in));
 			System.out.println("Enter Domain Name");
 			String company=br.readLine();
 			String Deployment_name=company+"-deployment";
 			// String Image_name=br.readLine();
-			kmr.createDeployment(Deployment_name, "ingress-nginx","venkystark/route:latest");
+			// kmr.createDeployment(Deployment_name, "ingress-nginx","venkystark/route:latest");
+            KubeTest kt=new KubeTest();
+            kt.createDeployment(Deployment_name,"ingress-nginx","venkystark/route:latest");
 			String ui_service=Deployment_name+"-ui-service";
 			String ws_service=Deployment_name+"-ws-service";
 			String tcp_service=Deployment_name+"-tcp-service";
-			int ui_port=kpf.findFreeServicePort(coreApi);
-			int ws_port=kpf.findFreeServicePort(coreApi);
-			int tcp_port=kpf.findFreeNodePort(coreApi);
+            String ws_mqtt_service=Deployment_name+"-ws-mqtt-service";
+			// int ui_port=kpf.findFreeServicePort(coreApi);
+			// int ws_port=kpf.findFreeServicePort(coreApi);
+			// int tcp_port=kpf.findFreeServicePort(coreApi);
+            // int ws_mqtt_port=kpf.findFreeServicePort(coreApi);
+            int ui_port=5;
+			int ws_port=6;
+			int tcp_port=7;
+            int ws_mqtt_port=8;
 			kmr.createService(ui_service,Deployment_name,"ingress-nginx",ui_port);
 			kmr.createService(ws_service, Deployment_name,"ingress-nginx", ws_port);
 			kmr.createService(tcp_service, Deployment_name,"ingress-nginx", tcp_port);
-			kmr.addNewHostToIngress("broker-ingress", "ingress-nginx", company+".mqttserver.com", ws_service, ws_port, ui_service, ui_port,"ssl");
+            kmr.createService(ws_mqtt_service, Deployment_name, "ingress-nginx", ws_mqtt_port);
+			kmr.addNewHostToIngress("broker-ingress", "ingress-nginx", company+".sfo.mqttserver.com", ws_service, ws_port, ui_service, ui_port,"tls-secret"); //ssl
 		}
 		catch(ApiException e) { 
 			System.out.println(e.getResponseBody());
