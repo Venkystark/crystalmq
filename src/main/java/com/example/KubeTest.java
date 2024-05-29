@@ -41,6 +41,7 @@ public class KubeTest {
     // Set template labels
     V1ObjectMeta templateMetadata = new V1ObjectMeta();
     templateMetadata.setLabels(Collections.singletonMap("app", deploymentName));
+    // templateMetadata.setAnnotations(Collections.singletonMap("nodeSelector", "node-name=node1"));
     V1PodTemplateSpec templateSpec = new V1PodTemplateSpec();
     templateSpec.setMetadata(templateMetadata);
 
@@ -87,6 +88,10 @@ public class KubeTest {
     pvcVolumeSource.setClaimName("mqttroute-pvc");
     volume.setPersistentVolumeClaim(pvcVolumeSource);
     podSpec.setVolumes(Collections.singletonList(volume));
+    
+    //setting node for deployment
+    podSpec.setNodeName("kube-bupmz-default-worker-g4hlp-frt4j");
+
 
     templateSpec.setSpec(podSpec);
 

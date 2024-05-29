@@ -7,6 +7,7 @@ import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
+import io.kubernetes.client.openapi.apis.BatchV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.apis.NetworkingV1Api;
 import io.kubernetes.client.util.ClientBuilder;
@@ -76,6 +77,25 @@ public class KubeConnect {
 
         return api;
     }
+    public static BatchV1Api getBatchV1APIInstance() throws IOException, ApiException {
+        ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(kubeConfigPath)))
+                .build();
 
+        Configuration.setDefaultApiClient(client);
+
+        BatchV1Api api = new BatchV1Api(client);
+
+        // Check connection for BatchV1Api
+        try {
+            // Send a test request to check if the connection is successful
+            api.listCronJobForAllNamespaces(null, null, null, null, null, null, null, null, null, null);
+            System.out.println("Connection Success with BatchV1Api :)");
+        } catch (ApiException e) {
+            // Print connection failure details if there's an exception
+            System.err.println("BatchV1Api(CronJob Api) Connection failed! " + e.getResponseBody());
+        }
+
+        return api;
+    }
 
 }

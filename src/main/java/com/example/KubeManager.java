@@ -6,12 +6,36 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
 import io.kubernetes.client.custom.IntOrString;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
+import io.kubernetes.client.openapi.apis.BatchV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.apis.NetworkingV1Api;
-import io.kubernetes.client.openapi.models.*;
+import io.kubernetes.client.openapi.models.V1Container;
+import io.kubernetes.client.openapi.models.V1ContainerPort;
+import io.kubernetes.client.openapi.models.V1CronJob;
+import io.kubernetes.client.openapi.models.V1CronJobSpec;
+import io.kubernetes.client.openapi.models.V1Deployment;
+import io.kubernetes.client.openapi.models.V1DeploymentSpec;
+import io.kubernetes.client.openapi.models.V1HTTPIngressPath;
+import io.kubernetes.client.openapi.models.V1HTTPIngressRuleValue;
+import io.kubernetes.client.openapi.models.V1Ingress;
+import io.kubernetes.client.openapi.models.V1IngressBackend;
+import io.kubernetes.client.openapi.models.V1IngressRule;
+import io.kubernetes.client.openapi.models.V1IngressServiceBackend;
+import io.kubernetes.client.openapi.models.V1IngressTLS;
+import io.kubernetes.client.openapi.models.V1JobSpec;
+import io.kubernetes.client.openapi.models.V1JobTemplateSpec;
+import io.kubernetes.client.openapi.models.V1LabelSelector;
+import io.kubernetes.client.openapi.models.V1ObjectMeta;
+import io.kubernetes.client.openapi.models.V1PodSpec;
+import io.kubernetes.client.openapi.models.V1PodTemplateSpec;
+import io.kubernetes.client.openapi.models.V1Service;
+import io.kubernetes.client.openapi.models.V1ServiceBackendPort;
+import io.kubernetes.client.openapi.models.V1ServicePort;
+import io.kubernetes.client.openapi.models.V1ServiceSpec;
 
 
 
@@ -21,6 +45,7 @@ public class KubeManager {
 	static AppsV1Api appsApi = null;
 	static CoreV1Api coreApi=null;
 	static NetworkingV1Api networkApi=null;
+    static BatchV1Api batchapi=null;
 
 	// String deploymentName = "deployment-1";
 	// String imageName = "nginx";
@@ -31,6 +56,7 @@ public class KubeManager {
 		appsApi = KubeConnect.getAPIInstance();
 		coreApi=KubeConnect.getCoreV1APIInstance();
 		networkApi=KubeConnect.getNetworkingV1APIInstance();
+        batchapi=KubeConnect.getBatchV1APIInstance();
 	}
 
 	//added missing labels
@@ -78,7 +104,10 @@ public class KubeManager {
     V1ContainerPort containerPort3 = new V1ContainerPort();
     containerPort3.setContainerPort(1883); // Port 1883
     containerPorts.add(containerPort3);
-
+    
+    V1ContainerPort containerPort4=new V1ContainerPort();
+    containerPort4.setContainerPort(10433);
+    containerPorts.add(containerPort4);
     container.setPorts(containerPorts);
 
     V1PodSpec podSpec = new V1PodSpec();
@@ -225,6 +254,66 @@ public void addNewHostToIngress(String ingressName, String namespace, String new
         e.printStackTrace();
     }
 }
+public void createCronJob(String CronJob_name,String namespace,String url, String[] services, String deploymentName, String ingressName) {
+    try {
+        V1Container container = new V1Container();
+        container.setName("cleanup");
+        container.setImage("bitnami/kubectl:latest");
+        container.setCommand(Collections.singletonList("/bin/sh"));
+        container.setArgs(List.of(
+                "-c",
+                "# Define the host and resources to be removed\n" +
+                        "HOST_TO_REMOVE=\"" + url + "\"\n" +
+                        "SERVICES=\"" + String.join(" ", services) + "\"\n" +
+                        "DEPLOYMENT=\"" + deploymentName + "\"\n" +
+                        "INGRESS_NAME=\"" + ingressName + "\"\n" +
+                        "NAMESPACE=\"" + namespace + "\"\n" +
+                        "cronjob_name=\"" + CronJob_name + "\"\n" +
+                        "# Remove the host from the ingress\n" +
+                        "kubectl get ingress $INGRESS_NAME -n $NAMESPACE -o json | \\\n" +
+                        "jq --arg host \"$HOST_TO_REMOVE\" 'del(.spec.rules[] | select(.host == $host)) | del(.spec.tls[] | select(.hosts[0] == $host))' | \\\n" +
+                        "kubectl apply -f -\n" +
+                        "# Delete the associated services\n" +
+                        "for service in $SERVICES; do\n" +
+                        "  kubectl delete service $service -n $NAMESPACE\n" +
+                        "done\n" +
+                        "# Delete the deployment\n" +
+                        "kubectl delete deployment $DEPLOYMENT -n $NAMESPACE\n" +
+                        "# Delete the CronJob itself\n" +
+                        "kubectl delete cronjob $cronjob_name -n $NAMESPACE"
+        ));
+
+        V1PodSpec podSpec = new V1PodSpec();
+        podSpec.setContainers(Collections.singletonList(container));
+        podSpec.setRestartPolicy("Never"); // Add the required restartPolicy
+
+        V1JobSpec jobSpec = new V1JobSpec();
+        jobSpec.setTemplate(new V1PodTemplateSpec().spec(podSpec));
+
+        V1JobTemplateSpec jobTemplateSpec = new V1JobTemplateSpec();
+        jobTemplateSpec.setSpec(jobSpec);
+
+        V1CronJob cronJob = new V1CronJob();
+        cronJob.setApiVersion("batch/v1");
+        cronJob.setKind("CronJob");
+
+        V1ObjectMeta metadata = new V1ObjectMeta();
+        metadata.setName(CronJob_name);
+        metadata.setNamespace(namespace);
+        cronJob.setMetadata(metadata);
+
+        V1CronJobSpec cronJobSpec = new V1CronJobSpec();
+        cronJobSpec.setSchedule("*/5 * * * *");
+        cronJobSpec.setJobTemplate(jobTemplateSpec);
+        cronJob.setSpec(cronJobSpec);
+
+        batchapi.createNamespacedCronJob(namespace, cronJob, null, null, null, null);
+        System.out.println("CronJob created successfully.");
+    } catch (ApiException e) {
+        System.err.println("Error creating CronJob: " + e.getResponseBody());
+    }
+}
+
 
 	public void listDetails() 
 	{
@@ -254,27 +343,29 @@ public void addNewHostToIngress(String ingressName, String namespace, String new
 			String company=br.readLine();
 			String Deployment_name=company+"-deployment";
 			// String Image_name=br.readLine();
-			// kmr.createDeployment(Deployment_name, "ingress-nginx","venkystark/route:latest");
+			//kmr.createDeployment(Deployment_name, "ingress-nginx","venkystark/route:latest");
             KubeTest kt=new KubeTest();
             kt.createDeployment(Deployment_name,"ingress-nginx","venkystark/route:latest");
 			String ui_service=Deployment_name+"-ui-service";
 			String ws_service=Deployment_name+"-ws-service";
 			String tcp_service=Deployment_name+"-tcp-service";
-            String ws_mqtt_service=Deployment_name+"-ws-mqtt-service";
+            String ws_mqtt_service=Deployment_name+"-ws-mqtt-service"; 
 			// int ui_port=kpf.findFreeServicePort(coreApi);
 			// int ws_port=kpf.findFreeServicePort(coreApi);
 			// int tcp_port=kpf.findFreeServicePort(coreApi);
             // int ws_mqtt_port=kpf.findFreeServicePort(coreApi);
-            int ui_port=5;
-			int ws_port=6;
-			int tcp_port=7;
-            int ws_mqtt_port=8;
+            int ui_port=10;
+			int ws_port=11;
+			int tcp_port=12;
+            int ws_mqtt_port=13;
+            String cronjob_name=Deployment_name+"-cronjob";
 			kmr.createService(ui_service,Deployment_name,"ingress-nginx",ui_port);
 			kmr.createService(ws_service, Deployment_name,"ingress-nginx", ws_port);
 			kmr.createService(tcp_service, Deployment_name,"ingress-nginx", tcp_port);
             kmr.createService(ws_mqtt_service, Deployment_name, "ingress-nginx", ws_mqtt_port);
 			kmr.addNewHostToIngress("broker-ingress", "ingress-nginx", company+".sfo.mqttserver.com", ws_service, ws_port, ui_service, ui_port,"tls-secret"); //ssl
-		}
+            kmr.createCronJob(cronjob_name, "ingress-nginx", company+".sfo.mqttserver.com", new String[] { ui_service, ws_service, tcp_service, ws_mqtt_service }, Deployment_name, "broker-ingress");
+        }
 		catch(ApiException e) { 
 			System.out.println(e.getResponseBody());
 			e.printStackTrace();
